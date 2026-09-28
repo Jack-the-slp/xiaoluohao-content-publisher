@@ -92,6 +92,7 @@ class Publisher:
         self.browser_lock = threading.Lock()
         self._make_ui()
         self.account.trace_add("write", lambda *_: [state.set("未检查") for state in self.status.values()])
+        self.refresh_saved_accounts()
 
     def _make_ui(self) -> None:
         header = Frame(self.root, bg=COLORS["ink"], padx=28, pady=17)
@@ -286,6 +287,11 @@ class Publisher:
         command = [sys.executable, str(ROOT / "sau_cli.py"), platform, "check", "--account", account]
         threading.Thread(target=self._account_command, args=(name, command, False), daemon=True).start()
 
+    def refresh_saved_accounts(self) -> None:
+        for name, platform in PLATFORMS["视频"].items():
+            if (ROOT / "cookies" / f"{platform}_{self.account.get().strip()}.json").is_file():
+                self.check_login(name, platform)
+
     def _account_command(self, name: str, command: list[str], login: bool) -> None:
         try:
             env = os.environ.copy()
@@ -294,8 +300,7 @@ class Publisher:
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
                                     encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW,
                                     env=env)
-            state = "扫码后点检查" if login and result.returncode == 0 else (
-                "登录失败" if login else "已登录" if result.returncode == 0 else "需登录")
+            state = "已登录" if result.returncode == 0 else "登录失败" if login else "需登录"
             self.root.after(0, self.status[name].set, state)
             if result.returncode:
                 output = (result.stderr or result.stdout).strip()

@@ -10,7 +10,8 @@ import xiaoluohao_publisher as publisher
 Publisher = publisher.Publisher
 
 
-app = Publisher()
+with patch.object(Publisher, "refresh_saved_accounts"):
+    app = Publisher()
 try:
     app.root.update()
     assert app.current_page == "login"
@@ -24,10 +25,20 @@ try:
         port_file.parent.mkdir()
         port_file.write_text("12345\n")
         assert app._login_browser_url() == "http://127.0.0.1:12345"
+    with TemporaryDirectory() as tmp, patch.object(publisher, "ROOT", Path(tmp)), patch.object(app, "check_login") as check:
+        cookie = Path(tmp) / "cookies" / "douyin_主账号.json"
+        cookie.parent.mkdir()
+        cookie.write_text("{}")
+        app.refresh_saved_accounts()
+        check.assert_called_once_with("抖音", "douyin")
     failed = CompletedProcess([], 1, "", "(node:1) [DEP0169] DeprecationWarning: url.parse()\nLocator.count: Target page, context or browser has been closed")
     with patch.object(app, "_login_browser_url", return_value="http://127.0.0.1:12345"), patch.object(publisher.subprocess, "run", return_value=failed):
         app._account_command("抖音", ["test"], True)
         app.root.update()
         assert "标签页已关闭" in app.login_notice.get()
+    with patch.object(app, "_login_browser_url", return_value="http://127.0.0.1:12345"), patch.object(publisher.subprocess, "run", return_value=CompletedProcess([], 0, "", "")):
+        app._account_command("抖音", ["test"], True)
+        app.root.update()
+        assert app.status["抖音"].get() == "已登录"
 finally:
     app.root.destroy()
