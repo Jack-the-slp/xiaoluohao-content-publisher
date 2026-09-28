@@ -106,7 +106,7 @@ class Publisher:
         self.login_page = Frame(self.root, bg=COLORS["bg"], padx=32, pady=24)
         Label(self.login_page, text="先连接你的账号", font=("Microsoft YaHei UI", 23, "bold"),
               fg=COLORS["ink"], bg=COLORS["bg"]).pack(anchor="w")
-        Label(self.login_page, text="各平台在同一个浏览器窗口中打开标签页。扫码后点“检查状态”；B站仍使用终端扫码。",
+        Label(self.login_page, text="各平台在同一个浏览器窗口中打开标签页。扫码完成前请保持窗口和标签页打开；B站使用终端扫码。",
               fg=COLORS["muted"], bg=COLORS["bg"], font=("Microsoft YaHei UI", 10)).pack(anchor="w", pady=(5, 21))
         self.login_notice = StringVar(value="")
         Label(self.login_page, textvariable=self.login_notice, fg="#b42318", bg=COLORS["bg"],
@@ -299,7 +299,15 @@ class Publisher:
             self.root.after(0, self.status[name].set, state)
             if result.returncode:
                 output = (result.stderr or result.stdout).strip()
-                detail = output.splitlines()[0] if output else "请检查本机浏览器和网络"
+                if "Target page, context or browser has been closed" in output:
+                    detail = "登录浏览器或标签页已关闭。请重新点登录，扫码完成前保持页面打开。"
+                elif "等待" in output and "超时" in output:
+                    detail = "扫码等待超时，请重新点登录并及时扫码。"
+                else:
+                    lines = [line.strip() for line in output.splitlines() if line.strip()]
+                    detail = next((line for line in reversed(lines) if not line.startswith(("(node:", "(Use ", "- <"))
+                                   and "DeprecationWarning" not in line and "url.parse" not in line),
+                                  "请检查本机浏览器和网络")
                 self.root.after(0, self.write_log, f"{name}：{state} {output[-1800:]}")
                 self.root.after(0, self.login_notice.set, f"{name}：{state}。{detail}")
         except (OSError, RuntimeError) as exc:

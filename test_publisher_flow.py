@@ -1,6 +1,7 @@
 """Run with: python test_publisher_flow.py"""
 
 from pathlib import Path
+from subprocess import CompletedProcess
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -23,5 +24,10 @@ try:
         port_file.parent.mkdir()
         port_file.write_text("12345\n")
         assert app._login_browser_url() == "http://127.0.0.1:12345"
+    failed = CompletedProcess([], 1, "", "(node:1) [DEP0169] DeprecationWarning: url.parse()\nLocator.count: Target page, context or browser has been closed")
+    with patch.object(app, "_login_browser_url", return_value="http://127.0.0.1:12345"), patch.object(publisher.subprocess, "run", return_value=failed):
+        app._account_command("抖音", ["test"], True)
+        app.root.update()
+        assert "标签页已关闭" in app.login_notice.get()
 finally:
     app.root.destroy()
