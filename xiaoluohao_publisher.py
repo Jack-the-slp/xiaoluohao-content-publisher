@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 import threading
+import time
+from urllib.request import urlopen
 from datetime import datetime
 from pathlib import Path
 from tkinter import END, Button, Checkbutton, Entry, Frame, Label, StringVar, Text, Tk, filedialog, messagebox
+from conf import LOCAL_CHROME_PATH
 
 
 ROOT = Path(__file__).resolve().parent
@@ -85,6 +89,7 @@ class Publisher:
         self.target_vars: dict[str, StringVar] = {}
         self.busy = False
         self.status: dict[str, StringVar] = {}
+        self.browser_lock = threading.Lock()
         self._make_ui()
         self.account.trace_add("write", lambda *_: [state.set("未检查") for state in self.status.values()])
 
@@ -101,7 +106,7 @@ class Publisher:
         self.login_page = Frame(self.root, bg=COLORS["bg"], padx=32, pady=24)
         Label(self.login_page, text="先连接你的账号", font=("Microsoft YaHei UI", 23, "bold"),
               fg=COLORS["ink"], bg=COLORS["bg"]).pack(anchor="w")
-        Label(self.login_page, text="选择平台登录，完成扫码或验证后点“检查状态”。登录资料只保存在本机。",
+        Label(self.login_page, text="各平台在同一个浏览器窗口中打开标签页。扫码后点“检查状态”；B站仍使用终端扫码。",
               fg=COLORS["muted"], bg=COLORS["bg"], font=("Microsoft YaHei UI", 10)).pack(anchor="w", pady=(5, 21))
         self.login_notice = StringVar(value="")
         Label(self.login_page, textvariable=self.login_notice, fg="#b42318", bg=COLORS["bg"],
@@ -283,8 +288,12 @@ class Publisher:
 
     def _account_command(self, name: str, command: list[str], login: bool) -> None:
         try:
+            env = os.environ.copy()
+            if login:
+                env["XIAOLUOHAO_LOGIN_CDP"] = self._login_browser_url()
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
-                                    encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
+                                    encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW,
+                                    env=env)
             state = "扫码后点检查" if login and result.returncode == 0 else (
                 "登录失败" if login else "已登录" if result.returncode == 0 else "需登录")
             self.root.after(0, self.status[name].set, state)
@@ -293,10 +302,39 @@ class Publisher:
                 detail = output.splitlines()[0] if output else "请检查本机浏览器和网络"
                 self.root.after(0, self.write_log, f"{name}：{state} {output[-1800:]}")
                 self.root.after(0, self.login_notice.set, f"{name}：{state}。{detail}")
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             self.root.after(0, self.status[name].set, "启动失败")
             self.root.after(0, self.write_log, f"{name}：{exc}")
             self.root.after(0, self.login_notice.set, f"{name}：启动失败。{exc}")
+
+    def _login_browser_url(self) -> str:
+        with self.browser_lock:
+            profile = DATA / "login_browser"
+            port_file = profile / "DevToolsActivePort"
+            if port_file.exists():
+                try:
+                    port = port_file.read_text().splitlines()[0]
+                    url = f"http://127.0.0.1:{int(port)}"
+                    with urlopen(url + "/json/version", timeout=1):
+                        return url
+                except (OSError, ValueError, IndexError):
+                    port_file.unlink(missing_ok=True)
+            if not LOCAL_CHROME_PATH or not Path(LOCAL_CHROME_PATH).is_file():
+                raise RuntimeError("请先安装 Chrome 或 Edge 浏览器")
+            profile.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen([LOCAL_CHROME_PATH, "--remote-debugging-port=0",
+                              f"--user-data-dir={profile}", "--no-first-run", "about:blank"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+            for _ in range(100):
+                if port_file.exists():
+                    try:
+                        port = int(port_file.read_text().splitlines()[0])
+                        return f"http://127.0.0.1:{port}"
+                    except (ValueError, IndexError):
+                        pass
+                time.sleep(0.1)
+            raise RuntimeError("浏览器窗口未能启动，请检查本机 Chrome 或 Edge")
 
     def write_log(self, message: str) -> None:
         self.log.config(state="normal")

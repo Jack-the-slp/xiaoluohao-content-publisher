@@ -387,13 +387,15 @@ async def tencent_cookie_gen(
     poll_interval: int = 3,
     max_checks: int = 100,
     headless: bool = LOCAL_CHROME_HEADLESS,
+    cdp_url: str | None = None,
 ):
     account_file = _resolve_account_file(account_file)
     Path(account_file).parent.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(**_build_launch_kwargs(headless=headless))
-        context = await browser.new_context()
+        browser = await (playwright.chromium.connect_over_cdp(cdp_url) if cdp_url else
+                         playwright.chromium.launch(**_build_launch_kwargs(headless=headless)))
+        context = browser.contexts[0] if cdp_url else await browser.new_context()
         qrcode_path = None
         result = _build_login_result(False, "failed", "视频号登录失败", account_file)
         try:
@@ -445,7 +447,8 @@ async def tencent_cookie_gen(
                 tencent_logger.info(_msg("🧹", f"临时二维码文件已清理: {qrcode_path}"))
             if not result["success"]:
                 tencent_logger.error(_msg("😢", f"登录失败: {result['message']}"))
-            await context.close()
+            if not cdp_url:
+                await context.close()
             await browser.close()
 
 
@@ -455,6 +458,7 @@ async def tencent_setup(
     return_detail=False,
     qrcode_callback=None,
     headless: bool = LOCAL_CHROME_HEADLESS,
+    cdp_url: str | None = None,
 ):
     account_file = _resolve_account_file(account_file)
     if not os.path.exists(account_file) or not await cookie_auth(account_file):
@@ -463,7 +467,8 @@ async def tencent_setup(
             return result if return_detail else False
 
         tencent_logger.info(_msg("🥹", "cookie 失效了，准备打开浏览器重新登录"))
-        result = await tencent_cookie_gen(account_file, qrcode_callback=qrcode_callback, headless=headless)
+        result = await tencent_cookie_gen(account_file, qrcode_callback=qrcode_callback, headless=headless,
+                                          cdp_url=cdp_url)
         return result if return_detail else result["success"]
 
     result = _build_login_result(True, "cookie_valid", "cookie有效", account_file)

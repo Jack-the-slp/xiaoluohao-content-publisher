@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -294,7 +295,8 @@ def parse_schedule(raw_schedule: str | None) -> datetime | int:
 
 async def login_douyin_account(account_name: str, headless: bool = True) -> dict:
     account_file = resolve_account_file("douyin", account_name)
-    return await douyin_setup(str(account_file), handle=True, return_detail=True, headless=headless)
+    return await douyin_setup(str(account_file), handle=True, return_detail=True, headless=headless,
+                              cdp_url=os.getenv("XIAOLUOHAO_LOGIN_CDP"))
 
 
 async def check_douyin_account(account_name: str) -> bool:
@@ -306,7 +308,8 @@ async def check_douyin_account(account_name: str) -> bool:
 
 async def login_kuaishou_account(account_name: str, headless: bool = True) -> dict:
     account_file = resolve_account_file("kuaishou", account_name)
-    return await ks_setup(str(account_file), handle=True, return_detail=True, headless=headless)
+    return await ks_setup(str(account_file), handle=True, return_detail=True, headless=headless,
+                          cdp_url=os.getenv("XIAOLUOHAO_LOGIN_CDP"))
 
 
 async def check_kuaishou_account(account_name: str) -> bool:
@@ -318,7 +321,8 @@ async def check_kuaishou_account(account_name: str) -> bool:
 
 async def login_xiaohongshu_account(account_name: str, headless: bool = True) -> dict:
     account_file = resolve_account_file("xiaohongshu", account_name)
-    return await xiaohongshu_setup(str(account_file), handle=True, return_detail=True, headless=headless)
+    return await xiaohongshu_setup(str(account_file), handle=True, return_detail=True, headless=headless,
+                                   cdp_url=os.getenv("XIAOLUOHAO_LOGIN_CDP"))
 
 
 async def check_xiaohongshu_account(account_name: str) -> bool:
@@ -360,7 +364,8 @@ async def check_bilibili_account(account_name: str) -> bool:
 
 async def login_tencent_account(account_name: str, headless: bool = True) -> dict:
     account_file = resolve_account_file("tencent", account_name)
-    return await tencent_setup(str(account_file), handle=True, return_detail=True, headless=headless)
+    return await tencent_setup(str(account_file), handle=True, return_detail=True, headless=headless,
+                               cdp_url=os.getenv("XIAOLUOHAO_LOGIN_CDP"))
 
 
 async def check_tencent_account(account_name: str) -> bool:
