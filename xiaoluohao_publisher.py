@@ -19,6 +19,8 @@ PLATFORMS = {
     "视频": {"抖音": "douyin", "小红书": "xiaohongshu", "快手": "kuaishou", "视频号": "tencent", "B站": "bilibili"},
     "文章": {"公众号": "weixin", "知乎": "zhihu", "头条": "toutiao", "B站专栏": "bilibili"},
 }
+COLORS = {"bg": "#f5f7fb", "card": "#ffffff", "ink": "#17243b", "muted": "#64748b",
+          "blue": "#315de5", "line": "#dfe5ee"}
 
 
 def build_commands(kind: str, targets: list[str], account: str, title: str, body: str,
@@ -71,49 +73,114 @@ class Publisher:
     def __init__(self) -> None:
         self.root = Tk()
         self.root.title("小螺号 · 内容发布")
-        self.root.geometry("740x720")
+        self.root.geometry("900x760")
+        self.root.minsize(780, 650)
+        self.root.configure(bg=COLORS["bg"])
         self.kind = StringVar(value="图片")
         self.title = StringVar()
-        self.account = StringVar(value="我的账号")
+        self.account = StringVar(value="主账号")
         self.tags = StringVar()
         self.category = StringVar()
         self.files: list[Path] = []
         self.target_vars: dict[str, StringVar] = {}
         self.busy = False
+        self.status: dict[str, StringVar] = {}
         self._make_ui()
+        self.account.trace_add("write", lambda *_: [state.set("未检查") for state in self.status.values()])
 
     def _make_ui(self) -> None:
-        Label(self.root, text="小螺号内容发布", font=("Microsoft YaHei UI", 19, "bold")).pack(pady=12)
-        kinds = Frame(self.root)
-        kinds.pack()
+        header = Frame(self.root, bg=COLORS["ink"], padx=28, pady=17)
+        header.pack(fill="x")
+        Label(header, text="小螺号  /  内容发布", font=("Microsoft YaHei UI", 19, "bold"),
+              fg="white", bg=COLORS["ink"]).pack(side="left")
+        self.nav_login = self._button(header, "① 登录账号", lambda: self.show_page("login"), secondary=True)
+        self.nav_login.pack(side="right", padx=(8, 0))
+        self.nav_editor = self._button(header, "② 内容创作", lambda: self.show_page("editor"), secondary=True)
+        self.nav_editor.pack(side="right")
+
+        self.login_page = Frame(self.root, bg=COLORS["bg"], padx=32, pady=24)
+        Label(self.login_page, text="先连接你的账号", font=("Microsoft YaHei UI", 23, "bold"),
+              fg=COLORS["ink"], bg=COLORS["bg"]).pack(anchor="w")
+        Label(self.login_page, text="选择平台登录，完成扫码或验证后点“检查状态”。登录资料只保存在本机。",
+              fg=COLORS["muted"], bg=COLORS["bg"], font=("Microsoft YaHei UI", 10)).pack(anchor="w", pady=(5, 21))
+        account_row = Frame(self.login_page, bg=COLORS["bg"])
+        account_row.pack(fill="x", pady=(0, 16))
+        Label(account_row, text="账号名称", fg=COLORS["ink"], bg=COLORS["bg"], width=10,
+              anchor="w", font=("Microsoft YaHei UI", 10, "bold")).pack(side="left")
+        Entry(account_row, textvariable=self.account, font=("Microsoft YaHei UI", 11),
+              relief="solid", bd=1).pack(side="left", fill="x", expand=True, ipady=7)
+        Label(account_row, text="本机别名，各平台共用", fg=COLORS["muted"], bg=COLORS["bg"]).pack(side="left", padx=12)
+        for name, platform in PLATFORMS["视频"].items():
+            row = Frame(self.login_page, bg=COLORS["card"], highlightbackground=COLORS["line"],
+                        highlightthickness=1, padx=17, pady=10)
+            row.pack(fill="x", pady=4)
+            Label(row, text=name, font=("Microsoft YaHei UI", 12, "bold"), fg=COLORS["ink"],
+                  bg=COLORS["card"], width=12, anchor="w").pack(side="left")
+            state = StringVar(value="未检查")
+            self.status[name] = state
+            Label(row, textvariable=state, fg=COLORS["muted"], bg=COLORS["card"],
+                  width=14, anchor="w").pack(side="left")
+            self._button(row, "检查状态", lambda n=name, p=platform: self.check_login(n, p), secondary=True).pack(side="right")
+            self._button(row, "登录", lambda n=name, p=platform: self.login_platform(n, p)).pack(side="right", padx=8)
+        article = Frame(self.login_page, bg=COLORS["card"], highlightbackground=COLORS["line"],
+                        highlightthickness=1, padx=17, pady=13)
+        article.pack(fill="x", pady=(12, 4))
+        Label(article, text="文章平台", font=("Microsoft YaHei UI", 12, "bold"), fg=COLORS["ink"],
+              bg=COLORS["card"]).pack(anchor="w")
+        Label(article, text="公众号、知乎、头条、B站专栏：在浏览器扩展中登录，发布时同步为草稿。",
+              fg=COLORS["muted"], bg=COLORS["card"]).pack(anchor="w", pady=(3, 0))
+        self._button(self.login_page, "进入内容创作  →", lambda: self.show_page("editor")).pack(anchor="e", pady=18)
+
+        self.editor_page = Frame(self.root, bg=COLORS["bg"], padx=32, pady=16)
+        Label(self.editor_page, text="创作与发布", font=("Microsoft YaHei UI", 22, "bold"),
+              fg=COLORS["ink"], bg=COLORS["bg"]).pack(anchor="w")
+        Label(self.editor_page, text="写一次内容，选择平台，确认后逐个提交。",
+              fg=COLORS["muted"], bg=COLORS["bg"]).pack(anchor="w", pady=(2, 12))
+        kinds = Frame(self.editor_page, bg=COLORS["bg"])
+        kinds.pack(anchor="w")
         for kind in PLATFORMS:
-            Button(kinds, text=kind, width=13, command=lambda k=kind: self.set_kind(k)).pack(side="left", padx=8)
-        self.kind_label = Label(self.root, text="当前：图片")
-        self.kind_label.pack(pady=6)
-        for label, var in (("标题", self.title), ("账号名称（图片、视频）", self.account),
-                           ("话题，逗号分隔", self.tags), ("B站视频分区 ID", self.category)):
-            Label(self.root, text=label).pack(anchor="w", padx=18)
-            Entry(self.root, textvariable=var).pack(fill="x", padx=18, pady=(0, 7))
-        Label(self.root, text="正文 / 图片说明 / 视频简介").pack(anchor="w", padx=18)
-        self.body = Text(self.root, height=10, wrap="word")
-        self.body.pack(fill="both", expand=True, padx=18)
-        Button(self.root, text="选择素材", command=self.choose_files).pack(anchor="w", padx=18, pady=8)
-        self.file_label = Label(self.root, text="未选择素材", anchor="w")
-        self.file_label.pack(fill="x", padx=18)
-        Label(self.root, text="目标平台").pack(anchor="w", padx=18, pady=(9, 0))
-        self.targets = Frame(self.root)
-        self.targets.pack(anchor="w", padx=18)
-        actions = Frame(self.root)
-        actions.pack(pady=12)
-        Button(actions, text="打开草稿", command=self.open_draft, width=12).pack(side="left", padx=5)
-        Button(actions, text="保存草稿", command=self.save_draft, width=15).pack(side="left", padx=10)
-        Button(actions, text="登录所选平台", command=self.login, width=14).pack(side="left", padx=5)
-        self.publish_button = Button(actions, text="确认后发布", command=self.publish, width=15)
-        self.publish_button.pack(side="left", padx=5)
-        Label(self.root, text="运行记录（结果以各平台后台为准）").pack(anchor="w", padx=18)
-        self.log = Text(self.root, height=9, state="disabled", wrap="word")
-        self.log.pack(fill="both", expand=True, padx=18, pady=(0, 14))
+            self._button(kinds, kind, lambda k=kind: self.set_kind(k), secondary=True).pack(side="left", padx=(0, 8))
+        self.kind_label = Label(self.editor_page, text="当前：图片", fg=COLORS["muted"], bg=COLORS["bg"])
+        self.kind_label.pack(anchor="w", pady=(7, 10))
+        form = Frame(self.editor_page, bg=COLORS["card"], padx=18, pady=12,
+                     highlightbackground=COLORS["line"], highlightthickness=1)
+        form.pack(fill="both", expand=True)
+        for label, var in (("标题", self.title), ("话题，逗号分隔", self.tags), ("B站视频分区 ID", self.category)):
+            Label(form, text=label, fg=COLORS["ink"], bg=COLORS["card"], anchor="w").pack(fill="x")
+            Entry(form, textvariable=var, relief="solid", bd=1).pack(fill="x", ipady=5, pady=(3, 8))
+        Label(form, text="正文 / 图片说明 / 视频简介", fg=COLORS["ink"], bg=COLORS["card"]).pack(anchor="w")
+        self.body = Text(form, height=6, wrap="word", relief="solid", bd=1)
+        self.body.pack(fill="both", expand=True, pady=(3, 8))
+        self._button(form, "选择素材", self.choose_files, secondary=True).pack(anchor="w")
+        self.file_label = Label(form, text="未选择素材", anchor="w", fg=COLORS["muted"], bg=COLORS["card"])
+        self.file_label.pack(fill="x", pady=(5, 0))
+        Label(form, text="目标平台", fg=COLORS["ink"], bg=COLORS["card"]).pack(anchor="w", pady=(8, 0))
+        self.targets = Frame(form, bg=COLORS["card"])
+        self.targets.pack(anchor="w")
+        actions = Frame(self.editor_page, bg=COLORS["bg"])
+        actions.pack(fill="x", pady=11)
+        self._button(actions, "打开草稿", self.open_draft, secondary=True).pack(side="left")
+        self._button(actions, "保存草稿", self.save_draft, secondary=True).pack(side="left", padx=8)
+        self.publish_button = self._button(actions, "确认后发布", self.publish)
+        self.publish_button.pack(side="right")
+        Label(self.editor_page, text="运行记录 · 最终状态以各平台后台为准", fg=COLORS["muted"],
+              bg=COLORS["bg"]).pack(anchor="w")
+        self.log = Text(self.editor_page, height=5, state="disabled", wrap="word", relief="solid", bd=1)
+        self.log.pack(fill="x", pady=(5, 0))
         self.set_kind("图片")
+        self.show_page("login")
+
+    def _button(self, parent: Frame, label: str, action, secondary: bool = False) -> Button:
+        return Button(parent, text=label, command=action, font=("Microsoft YaHei UI", 10),
+                      bg=COLORS["card"] if secondary else COLORS["blue"],
+                      fg=COLORS["ink"] if secondary else "white", activebackground=COLORS["line"],
+                      relief="flat", bd=0, padx=16, pady=7, cursor="hand2")
+
+    def show_page(self, page: str) -> None:
+        self.login_page.pack_forget()
+        self.editor_page.pack_forget()
+        (self.login_page if page == "login" else self.editor_page).pack(fill="both", expand=True)
+        self.current_page = page
 
     def set_kind(self, kind: str) -> None:
         self.kind.set(kind)
@@ -124,7 +191,8 @@ class Publisher:
         for name in PLATFORMS[kind]:
             var = StringVar(value="")
             self.target_vars[name] = var
-            Checkbutton(self.targets, text=name, variable=var, onvalue="1", offvalue="").pack(side="left", padx=5)
+            Checkbutton(self.targets, text=name, variable=var, onvalue="1", offvalue="",
+                        bg=COLORS["card"], activebackground=COLORS["card"]).pack(side="left", padx=5)
         self.files = []
         self.file_label.config(text="文章直接填写正文" if kind == "文章" else "未选择素材")
 
@@ -182,23 +250,45 @@ class Publisher:
         except (OSError, ValueError, KeyError, IndexError) as exc:
             messagebox.showerror("无法打开草稿", str(exc))
 
-    def login(self) -> None:
-        targets = self.selected()
-        if self.kind.get() == "文章":
-            messagebox.showinfo("文章登录", "请在 Chrome 或 Edge 中安装文章同步助手扩展，并在浏览器里登录目标平台。")
+    def login_platform(self, name: str, platform: str) -> None:
+        account = self.account.get().strip()
+        if not account:
+            messagebox.showerror("无法登录", "请先填写账号名称")
             return
-        if not targets or not self.account.get().strip():
-            messagebox.showerror("无法登录", "请先选择平台并填写账号名称")
+        command = [sys.executable, str(ROOT / "sau_cli.py"), platform, "login", "--account", account]
+        self.status[name].set("登录中…")
+        if platform == "bilibili":
+            try:
+                subprocess.Popen(command, cwd=ROOT, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                self.status[name].set("扫码后点检查")
+            except OSError as exc:
+                self.status[name].set("启动失败")
+                messagebox.showerror("无法登录", str(exc))
             return
-        if "B站" in targets:
-            messagebox.showinfo("B站登录", "B站首次登录需要在本文件夹的终端中运行：.venv\\Scripts\\python.exe sau_cli.py bilibili login --account 你的账号名称")
-            targets = [t for t in targets if t != "B站"]
-        commands = [[sys.executable, str(ROOT / "sau_cli.py"), PLATFORMS[self.kind.get()][t],
-                     "login", "--account", self.account.get().strip(), "--headed"] for t in targets]
-        if commands:
-            self.busy = True
-            self.publish_button.config(state="disabled")
-            threading.Thread(target=self._run, args=(commands,), daemon=True).start()
+        threading.Thread(target=self._account_command, args=(name, command + ["--headed"], True), daemon=True).start()
+
+    def check_login(self, name: str, platform: str) -> None:
+        account = self.account.get().strip()
+        if not account:
+            messagebox.showerror("无法检查", "请先填写账号名称")
+            return
+        self.status[name].set("检查中…")
+        command = [sys.executable, str(ROOT / "sau_cli.py"), platform, "check", "--account", account]
+        threading.Thread(target=self._account_command, args=(name, command, False), daemon=True).start()
+
+    def _account_command(self, name: str, command: list[str], login: bool) -> None:
+        try:
+            result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace")
+            state = "扫码后点检查" if login and result.returncode == 0 else (
+                "登录失败" if login else "已登录" if result.returncode == 0 else "需登录")
+            self.root.after(0, self.status[name].set, state)
+            if result.returncode:
+                detail = (result.stderr or result.stdout).strip()[-300:]
+                self.root.after(0, self.write_log, f"{name}：{state} {detail}")
+        except OSError as exc:
+            self.root.after(0, self.status[name].set, "启动失败")
+            self.root.after(0, self.write_log, f"{name}：{exc}")
 
     def write_log(self, message: str) -> None:
         self.log.config(state="normal")
