@@ -114,7 +114,8 @@ async def cookie_auth(account_file):
         return False
 
     use_headless = os.environ.get("DOUYIN_COOKIE_AUTH_HEADLESS", "true").lower() in ("1", "true", "yes")
-    launch_kwargs = {"headless": use_headless, "channel": "chromium", "args": ["--no-sandbox", "--disable-blink-features=AutomationControlled"]}
+    launch_kwargs = {"headless": use_headless, "args": ["--no-sandbox", "--disable-blink-features=AutomationControlled"]}
+    launch_kwargs.update({"executable_path": LOCAL_CHROME_PATH} if LOCAL_CHROME_PATH else {"channel": "chromium"})
     for _attempt in range(3):
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(**launch_kwargs)
@@ -276,7 +277,7 @@ async def douyin_cookie_gen(
             context = browser.contexts[0] if browser.contexts else await browser.new_context()
             should_close_context = False
         else:
-            browser = await playwright.chromium.launch(headless=headless, channel="chromium")
+            browser = await playwright.chromium.launch(headless=headless, executable_path=LOCAL_CHROME_PATH or None)
             context = await browser.new_context()
             should_close_context = True
         context = await set_init_script(context)
@@ -973,7 +974,7 @@ class DouYinVideo(DouYinBaseUploader):
         await self.validate_upload_args()
         douyin_logger.info(_msg("🥳", "上传前检查通过"))
 
-        browser = await playwright.chromium.launch(headless=self.headless, channel="chromium", args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+        browser = await playwright.chromium.launch(headless=self.headless, executable_path=LOCAL_CHROME_PATH or None, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
         context = await browser.new_context(
             storage_state=f"{self.account_file}",
             permissions=["geolocation"],
@@ -1232,7 +1233,7 @@ class DouYinNote(DouYinBaseUploader):
         await self.validate_upload_args()
         douyin_logger.info(_msg("🥳", "图文上传前检查通过"))
 
-        browser = await playwright.chromium.launch(headless=self.headless, channel="chromium", args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+        browser = await playwright.chromium.launch(headless=self.headless, executable_path=LOCAL_CHROME_PATH or None, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
         context = await browser.new_context(
             storage_state=f"{self.account_file}",
             permissions=["geolocation"],

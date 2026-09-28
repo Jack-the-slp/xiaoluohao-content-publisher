@@ -103,6 +103,9 @@ class Publisher:
               fg=COLORS["ink"], bg=COLORS["bg"]).pack(anchor="w")
         Label(self.login_page, text="选择平台登录，完成扫码或验证后点“检查状态”。登录资料只保存在本机。",
               fg=COLORS["muted"], bg=COLORS["bg"], font=("Microsoft YaHei UI", 10)).pack(anchor="w", pady=(5, 21))
+        self.login_notice = StringVar(value="")
+        Label(self.login_page, textvariable=self.login_notice, fg="#b42318", bg=COLORS["bg"],
+              wraplength=780, justify="left", anchor="w").pack(fill="x")
         account_row = Frame(self.login_page, bg=COLORS["bg"])
         account_row.pack(fill="x", pady=(0, 16))
         Label(account_row, text="账号名称", fg=COLORS["ink"], bg=COLORS["bg"], width=10,
@@ -257,6 +260,7 @@ class Publisher:
             return
         command = [sys.executable, str(ROOT / "sau_cli.py"), platform, "login", "--account", account]
         self.status[name].set("登录中…")
+        self.login_notice.set("")
         if platform == "bilibili":
             try:
                 subprocess.Popen(command, cwd=ROOT, creationflags=subprocess.CREATE_NEW_CONSOLE)
@@ -273,22 +277,26 @@ class Publisher:
             messagebox.showerror("无法检查", "请先填写账号名称")
             return
         self.status[name].set("检查中…")
+        self.login_notice.set("")
         command = [sys.executable, str(ROOT / "sau_cli.py"), platform, "check", "--account", account]
         threading.Thread(target=self._account_command, args=(name, command, False), daemon=True).start()
 
     def _account_command(self, name: str, command: list[str], login: bool) -> None:
         try:
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
-                                    encoding="utf-8", errors="replace")
+                                    encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
             state = "扫码后点检查" if login and result.returncode == 0 else (
                 "登录失败" if login else "已登录" if result.returncode == 0 else "需登录")
             self.root.after(0, self.status[name].set, state)
             if result.returncode:
-                detail = (result.stderr or result.stdout).strip()[-300:]
-                self.root.after(0, self.write_log, f"{name}：{state} {detail}")
+                output = (result.stderr or result.stdout).strip()
+                detail = output.splitlines()[0] if output else "请检查本机浏览器和网络"
+                self.root.after(0, self.write_log, f"{name}：{state} {output[-1800:]}")
+                self.root.after(0, self.login_notice.set, f"{name}：{state}。{detail}")
         except OSError as exc:
             self.root.after(0, self.status[name].set, "启动失败")
             self.root.after(0, self.write_log, f"{name}：{exc}")
+            self.root.after(0, self.login_notice.set, f"{name}：启动失败。{exc}")
 
     def write_log(self, message: str) -> None:
         self.log.config(state="normal")
