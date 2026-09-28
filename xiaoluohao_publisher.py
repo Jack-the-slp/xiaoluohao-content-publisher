@@ -48,6 +48,8 @@ def build_commands(kind: str, targets: list[str], account: str, title: str, body
 
     commands = []
     for target in targets:
+        if target == "小红书":
+            continue  # 账号收到自动化警告后，仅保留本地草稿供手动发布
         platform = PLATFORMS[kind][target]
         if kind == "文章":
             local_cli = ROOT / ".wechatsync" / "node_modules" / ".bin" / "wechatsync.cmd"
@@ -91,7 +93,8 @@ class Publisher:
         self.status: dict[str, StringVar] = {}
         self.browser_lock = threading.Lock()
         self._make_ui()
-        self.account.trace_add("write", lambda *_: [state.set("未检查") for state in self.status.values()])
+        self.account.trace_add("write", lambda *_: [state.set("手动发布" if name == "小红书" else "未检查")
+                                                    for name, state in self.status.items()])
         self.refresh_saved_accounts()
 
     def _make_ui(self) -> None:
@@ -125,12 +128,15 @@ class Publisher:
             row.pack(fill="x", pady=4)
             Label(row, text=name, font=("Microsoft YaHei UI", 12, "bold"), fg=COLORS["ink"],
                   bg=COLORS["card"], width=12, anchor="w").pack(side="left")
-            state = StringVar(value="未检查")
+            state = StringVar(value="手动发布" if name == "小红书" else "未检查")
             self.status[name] = state
             Label(row, textvariable=state, fg=COLORS["muted"], bg=COLORS["card"],
                   width=14, anchor="w").pack(side="left")
-            self._button(row, "检查状态", lambda n=name, p=platform: self.check_login(n, p), secondary=True).pack(side="right")
-            self._button(row, "登录", lambda n=name, p=platform: self.login_platform(n, p)).pack(side="right", padx=8)
+            if name == "小红书":
+                Label(row, text="请用官方页面登录", fg=COLORS["muted"], bg=COLORS["card"]).pack(side="right")
+            else:
+                self._button(row, "检查状态", lambda n=name, p=platform: self.check_login(n, p), secondary=True).pack(side="right")
+                self._button(row, "登录", lambda n=name, p=platform: self.login_platform(n, p)).pack(side="right", padx=8)
         article = Frame(self.login_page, bg=COLORS["card"], highlightbackground=COLORS["line"],
                         highlightthickness=1, padx=17, pady=13)
         article.pack(fill="x", pady=(12, 4))
@@ -200,7 +206,7 @@ class Publisher:
         for name in PLATFORMS[kind]:
             var = StringVar(value="")
             self.target_vars[name] = var
-            Checkbutton(self.targets, text=name, variable=var, onvalue="1", offvalue="",
+            Checkbutton(self.targets, text="小红书（手动）" if name == "小红书" else name, variable=var, onvalue="1", offvalue="",
                         bg=COLORS["card"], activebackground=COLORS["card"]).pack(side="left", padx=5)
         self.files = []
         self.file_label.config(text="文章直接填写正文" if kind == "文章" else "未选择素材")
@@ -260,6 +266,9 @@ class Publisher:
             messagebox.showerror("无法打开草稿", str(exc))
 
     def login_platform(self, name: str, platform: str) -> None:
+        if platform == "xiaohongshu":
+            messagebox.showinfo("小红书手动发布", "小红书自动登录已停用。请在官方页面手动登录和发布。")
+            return
         account = self.account.get().strip()
         if not account:
             messagebox.showerror("无法登录", "请先填写账号名称")
@@ -278,6 +287,8 @@ class Publisher:
         threading.Thread(target=self._account_command, args=(name, command + ["--headed"], True), daemon=True).start()
 
     def check_login(self, name: str, platform: str) -> None:
+        if platform == "xiaohongshu":
+            return
         account = self.account.get().strip()
         if not account:
             messagebox.showerror("无法检查", "请先填写账号名称")
@@ -289,6 +300,8 @@ class Publisher:
 
     def refresh_saved_accounts(self) -> None:
         for name, platform in PLATFORMS["视频"].items():
+            if platform == "xiaohongshu":
+                continue
             if (ROOT / "cookies" / f"{platform}_{self.account.get().strip()}.json").is_file():
                 self.check_login(name, platform)
 
@@ -360,13 +373,20 @@ class Publisher:
             return
         try:
             article = self._save_draft()
-            commands = build_commands(self.kind.get(), self.selected(), self.account.get(),
+            targets = self.selected()
+            commands = build_commands(self.kind.get(), targets, self.account.get(),
                                       self.title.get(), self.body.get("1.0", END).strip(),
                                       self.files, self.tags.get(), self.category.get(), article)
         except ValueError as exc:
             messagebox.showerror("无法发布", str(exc))
             return
-        if not messagebox.askyesno("确认发布", f"将向 {', '.join(self.selected())} 提交内容。确认继续？"):
+        if "小红书" in targets:
+            self.write_log(f"小红书仅保存草稿，请在官方页面手动发布：{article}")
+            if not commands:
+                messagebox.showinfo("草稿已保存", "小红书自动发布已停用。请在官方页面手动上传素材并填写草稿内容。")
+                return
+        auto_targets = [target for target in targets if target != "小红书"]
+        if not messagebox.askyesno("确认发布", f"将向 {', '.join(auto_targets)} 提交内容。确认继续？"):
             return
         self.busy = True
         self.publish_button.config(state="disabled")

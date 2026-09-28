@@ -1042,6 +1042,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def dispatch(args: argparse.Namespace) -> int:
+    if args.platform == "xiaohongshu":
+        raise RuntimeError("小红书自动登录、检查和发布已停用；请在官方页面手动操作")
     if args.platform == "douyin":
         if args.action == "login":
             result = await login_douyin_account(args.account, headless=args.headless)

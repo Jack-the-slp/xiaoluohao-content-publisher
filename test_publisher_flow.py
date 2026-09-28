@@ -16,6 +16,9 @@ try:
     app.root.update()
     assert app.current_page == "login"
     assert set(app.status) == {"抖音", "小红书", "快手", "视频号", "B站"}
+    app.account.set("主账号2")
+    assert app.status["小红书"].get() == "手动发布"
+    app.account.set("主账号")
     app.show_page("editor")
     assert app.current_page == "editor"
     app.set_kind("文章")
@@ -31,6 +34,14 @@ try:
         cookie.write_text("{}")
         app.refresh_saved_accounts()
         check.assert_called_once_with("抖音", "douyin")
+    with TemporaryDirectory() as tmp:
+        image = Path(tmp) / "sample.jpg"
+        image.write_bytes(b"test")
+        assert publisher.build_commands("图片", ["小红书"], "主账号", "标题", "正文", [image], "", "") == []
+    with patch.object(publisher.messagebox, "showinfo") as notice, patch.object(publisher.subprocess, "run") as run:
+        app.login_platform("小红书", "xiaohongshu")
+        notice.assert_called_once()
+        run.assert_not_called()
     failed = CompletedProcess([], 1, "", "(node:1) [DEP0169] DeprecationWarning: url.parse()\nLocator.count: Target page, context or browser has been closed")
     with patch.object(app, "_login_browser_url", return_value="http://127.0.0.1:12345"), patch.object(publisher.subprocess, "run", return_value=failed):
         app._account_command("抖音", ["test"], True)
